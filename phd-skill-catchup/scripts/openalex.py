@@ -10,9 +10,9 @@ Subcommands
            cited-by search).
 
 Every subcommand prints a compact, human-readable report to stdout and, with --out,
-saves the full data as JSON. No API key is needed. A free OpenAlex key, given in the
-OPENALEX_API_KEY environment variable or with --key-file, makes searches faster; without
-one the anonymous daily allowance is small, so responses are cached on disk.
+saves the full data as JSON. No API key is needed. A free OpenAlex key makes searches
+faster. It is looked up in this order: the OPENALEX_API_KEY environment variable, the
+--key-file option, a line OPENALEX_API_KEY=... in the `.config` file of the skill folder.
 """
 import argparse
 import datetime as dt
@@ -55,8 +55,26 @@ class ApiError(Exception):
 _key_file = {"path": None}
 
 
+def config_value(name):
+    """Read NAME=value from the optional `.config` file in the skill folder."""
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".config")
+    try:
+        with open(path, "r", encoding="utf-8-sig") as fh:
+            for line in fh:
+                line = line.strip()
+                if line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                if k.strip().replace("export ", "") == name:
+                    return v.strip().strip("\"'")
+    except OSError:
+        pass
+    return ""
+
+
 def api_key():
-    """The user's OpenAlex key: environment variable first, then --key-file. Optional."""
+    """The user's OpenAlex key (optional): environment variable, then --key-file, then the
+    `.config` file in the skill folder."""
     if _key_file.get("rejected"):
         return ""
     key = os.environ.get("OPENALEX_API_KEY", "").strip()
@@ -69,7 +87,7 @@ def api_key():
             print("  (could not read a key from %s; continuing without one)" % _key_file["path"],
                   file=sys.stderr)
             _key_file["path"] = None
-    return key
+    return key or config_value("OPENALEX_API_KEY")
 
 
 def _cache_path(url):
@@ -294,11 +312,19 @@ def paged_works(filter_str, sort=None, max_items=200, search_params=None, use_ca
 
 def print_digest(items, heading):
     """Print the material an agent needs to infer research interests."""
+    uniq, seen = [], set()
+    for w in items:  # preprint, published and repository copies count once
+        nt = norm_title(w.get("title"))
+        if find_same(nt, seen) is None:
+            seen.add(nt)
+            uniq.append(w)
+    n_all, items = len(items), uniq
     resolved = [w for w in items if w.get("id")]
     print("=" * 78)
     print(heading)
     print("=" * 78)
-    print("Items: %d (%d matched to OpenAlex)" % (len(items), len(resolved)))
+    print("Items: %d distinct works (%d records including duplicate versions; %d matched to OpenAlex)"
+          % (len(items), n_all, len(resolved)))
     years = Counter(w.get("year") for w in items if w.get("year"))
     if years:
         ys = sorted(years)
@@ -329,10 +355,14 @@ def print_digest(items, heading):
         top = Counter()
         for f, c in fields.items():
             top[f.split(" > ")[0]] += c
-        if len([1 for c in top.values() if c >= 3]) >= 5:
-            print("  WARNING: these works spread over %d unrelated fields. OpenAlex may have merged several\n"
-                  "  people with the same name. Check the titles, ask the user which works are theirs, and\n"
-                  "  make a cleaned library with the `subset` command before going on." % len(top))
+        big = len([1 for c in top.values() if c >= 3])
+        share = max(top.values()) / float(sum(top.values()))
+        if len(top) >= 10 or (big >= 5 and share < 0.5):
+            print("  NOTE: these works spread over %d fields and none dominates (largest: %d%%). This is\n"
+                  "  either an interdisciplinary researcher or several people with the same name merged\n"
+                  "  by OpenAlex. Run `digest --list` to see every work with its institution. If the\n"
+                  "  titles do not belong together, ask the user which are theirs and make a cleaned\n"
+                  "  library with `subset`." % (len(top), round(share * 100)))
     if topics:
         print("\nOpenAlex topics (weighted count; 'recent' = last 3 years). Topics are coarse -")
         print("use them as hints and as optional --topic-id filters, not as the final interest list:")
@@ -351,14 +381,6 @@ def print_digest(items, heading):
             extra.append("cited %d" % w["cited_by_count"])
         return "  - %s%s" % (w.get("title") or "(untitled)", " [%s]" % "; ".join(extra) if extra else "")
 
-    uniq, seen = [], set()
-    for w in items:  # preprint + published versions share a title; list each once
-        nt = norm_title(w.get("title"))
-        if find_same(nt, seen) is None:
-            seen.add(nt)
-            uniq.append(w)
-    items = uniq
-    resolved = [w for w in items if w.get("id")]
     by_date = sorted(items, key=lambda w: (w.get("date") or str(w.get("year") or ""), w.get("date_added") or ""),
                      reverse=True)
     print("\nMost recent items (weigh these most - they show current interests):")
@@ -581,7 +603,15 @@ def cmd_subset(args):
 
 
 def cmd_digest(args):
-    print_digest(load_items(args.input), "Library digest (%s)" % os.path.basename(args.input))
+    items = load_items(args.input)
+    if args.list:
+        print("id | year | subfield | institutions | first authors | title")
+        for w in sorted(items, key=lambda w: (w.get("subfield") or "", -(w.get("year") or 0))):
+            print(" | ".join([w.get("id") or "-", str(w.get("year") or "-"), (w.get("subfield") or "-")[:30],
+                              "; ".join((w.get("institutions") or [])[:2])[:60] or "-",
+                              ", ".join((w.get("authors") or [])[:3])[:60], (w.get("title") or "")[:110]]))
+        return
+    print_digest(items, "Library digest (%s)" % os.path.basename(args.input))
 
 
 # ----------------------------------------------------------------------------- recent
@@ -630,6 +660,9 @@ def cmd_recent(args):
 
     for q in args.query or []:
         cq = clean_query(q)
+        if len(re.findall(r"\b(AND|OR|NOT)\b", cq)) > 5:
+            print("  note: query [%s] has more than 5 AND/OR/NOT operators; OpenAlex slows such "
+                  "queries down. Two shorter queries usually find more." % q[:60])
         f = base + ["title_and_abstract.search:" + cq] + ([topic_filter] if topic_filter else [])
         try:
             works, total = paged_works(",".join(f), sort=sort, max_items=args.per_query)
@@ -644,12 +677,12 @@ def cmd_recent(args):
         if not ids:
             failed.append(("citing " + path, "no OpenAlex work ids in this file; run `resolve` on it first"))
             continue
-        label, total_all, n_all = "cites the user's work", 0, 0
+        label, total_all, n_all = "cites a library item", 0, 0
         try:
             for i in range(0, len(ids), 50):
                 f = base + ["cites:" + "|".join(ids[i:i + 50])] + ([topic_filter] if topic_filter else [])
                 works, total = paged_works(",".join(f), sort=sort or "publication_date:desc",
-                                           max_items=args.per_query,
+                                           max_items=max(args.per_query, 200),
                                            select=WORK_FIELDS + ",referenced_works")
                 total_all += total or 0
                 n_all += add(works, label)
@@ -704,12 +737,21 @@ def cmd_recent(args):
         except (OSError, ValueError) as e:
             print("Could not read --known file %s: %s" % (path, e), file=sys.stderr)
 
-    excl_names = set(norm_title(n) for n in (args.exclude_author_name or []) if norm_title(n))
+    def name_key(n):
+        # "David R. Liu", "D. Liu" and "Liu, David" all become ("liu", "d")
+        n = (n or "").strip()
+        if "," in n:
+            last, first = [x.strip() for x in n.split(",", 1)]
+            n = first + " " + last
+        parts = norm_title(n).split()
+        return (parts[-1], parts[0][:1]) if len(parts) >= 2 else None
+
+    excl_names = set(k for k in (name_key(n) for n in (args.exclude_author_name or [])) if k)
     results, seen_titles, dropped = [], {}, Counter()
     for wid in order:
         s = found[wid]
         nt = norm_title(s["title"])
-        if excl_authors & set(s["author_ids"]) or excl_names & set(norm_title(a) for a in s["authors"]):
+        if excl_authors & set(s["author_ids"]) or excl_names & set(name_key(a) for a in s["authors"]):
             dropped["by the user"] += 1
         elif wid in known_ids or (s["doi"] and s["doi"].lower() in known_dois) or nt in known_titles:
             dropped["already in library"] += 1
@@ -757,7 +799,7 @@ def cmd_recent(args):
         if s["primary_topic"]:
             print("    OpenAlex topic: " + s["primary_topic"])
         if s.get("cites_user_works"):
-            print("    Cites the user's work: " + "; ".join(t[:90] for t in s["cites_user_works"][:4]))
+            print("    Cites from the library: " + "; ".join(t[:90] for t in s["cites_user_works"][:4]))
         link = "    Link: %s" % s["url"]
         if s["oa_url"] and s["oa_url"] != s["url"]:
             link += " | Open access: " + s["oa_url"]
@@ -790,7 +832,8 @@ def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--no-cache", action="store_true", help="ignore cached responses")
     p.add_argument("--key-file", help="file holding the user's OpenAlex key (optional; the "
-                                      "OPENALEX_API_KEY environment variable takes precedence)")
+                                      "OPENALEX_API_KEY environment variable takes precedence, and "
+                                      "the skill folder's .config file is the fallback)")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     a = sub.add_parser("author", help="load publications for an ORCID iD")
@@ -811,6 +854,9 @@ def main():
 
     d = sub.add_parser("digest", help="print the digest of a saved library")
     d.add_argument("--input", required=True)
+    d.add_argument("--list", action="store_true",
+                   help="list every work on one line with id, field, institutions and authors "
+                        "(for telling namesakes apart)")
     d.set_defaults(func=cmd_digest)
 
     u = sub.add_parser("subset", help="keep part of a library (e.g. drop works of namesakes)")
@@ -836,14 +882,16 @@ def main():
     c.add_argument("--days", type=int, default=90, help="look-back window in days (default 90)")
     c.add_argument("--from", dest="from_date", help="YYYY-MM-DD (overrides --days)")
     c.add_argument("--to", dest="to_date", help="YYYY-MM-DD (default today)")
-    c.add_argument("--per-query", type=int, default=25, help="max results fetched per search")
+    c.add_argument("--per-query", type=int, default=40,
+                   help="max results fetched per search (up to 100 costs the same as 1)")
     c.add_argument("--sort", choices=["relevance", "date", "cited"], default="relevance")
     c.add_argument("--types", default=DEFAULT_TYPES, help='e.g. "article|preprint|review" or "any"')
     c.add_argument("--language", help="ISO code, e.g. en")
     c.add_argument("--exclude-author", action="append", help="OpenAlex author id of the user (drop own papers)")
     c.add_argument("--exclude-author-name", action="append",
-                   help='full name of the user as printed on their papers, e.g. "Jane Q. Doe" '
-                        "(drop own papers when no ORCID is known). Repeatable for name variants")
+                   help='name of the user, e.g. "Jane Q. Doe" (drop own papers when no ORCID is '
+                        "known). Matches on family name plus first initial, so it also drops "
+                        "namesakes with the same initial")
     c.add_argument("--known", action="append", help="library JSON; items already in it (and, for a library saved by "
                                                  "`author`, the user's own papers) are dropped")
     c.add_argument("--abstract-chars", type=int, default=1400,

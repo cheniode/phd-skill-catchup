@@ -42,13 +42,17 @@ key so it is found in every conversation:
 | Where you use the skill | Where to put the key |
 |---|---|
 | Claude or ChatGPT web and desktop apps | Add the line `OpenAlex key: <your key>` to the instructions of a Project |
-| Terminal agents such as Claude Code | Set the `OPENALEX_API_KEY` environment variable |
+| Terminal agents such as Claude Code | Create a file `.config` in the installed skill folder with the line `OPENALEX_API_KEY=<your key>`, or set the `OPENALEX_API_KEY` environment variable |
 
 The key comes from https://openalex.org/settings/api. It only meters usage and can be
 replaced at any time.
 
 Advanced: reading a private library through zotero.org instead of an export file needs a
-read-only Zotero key in the `ZOTERO_API_KEY` environment variable.
+read-only Zotero key, as `ZOTERO_API_KEY=<your key>` in the same `.config` file or as an
+environment variable.
+
+The `.config` file is listed in `.gitignore`, so it is not committed. Remove it before you
+zip or share the skill folder.
 
 Optional: `pip install pypdf` (or install poppler's `pdftotext`) for reading PDF folders.
 

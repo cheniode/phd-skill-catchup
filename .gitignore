@@ -1,0 +1,8 @@
+# personal API keys
+.config
+
+__pycache__/
+*.pyc
+
+# test runs and benchmark outputs
+phd-skill-catchup-workspace/

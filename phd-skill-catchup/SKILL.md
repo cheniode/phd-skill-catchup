@@ -46,7 +46,10 @@ them off.
 
 Use a key when one is already there. Look in this order:
 
-1. The `OPENALEX_API_KEY` environment variable. The scripts pick it up by themselves.
+1. The `OPENALEX_API_KEY` environment variable, or a line `OPENALEX_API_KEY=...` in the
+   file `.config` in this skill's folder. The scripts pick up both by themselves, and the
+   usage line at the end of each run says whether a key was used. Do not open or print
+   `.config`.
 2. Your instructions for this conversation: project instructions, custom instructions or
    a memory, where the user may have stored a line such as `OpenAlex key: abc123`. Save
    the key to a file in `<work>` and pass that file to every `openalex.py` call:
@@ -100,17 +103,27 @@ Ask only about the name. Do not compare it with account details such as an email
 people legitimately run this for a supervisor, a collaborator or a group.
 
 OpenAlex sometimes attaches the works of other people with the same name to an ORCID. The
-signs are a warning in the digest, or titles from fields that have nothing to do with each
-other. When you see this, tell the user, ask which group of works is theirs, and make a
-cleaned library before going on. Use the cleaned file everywhere a library is needed:
+sign is titles that cannot belong to one person, such as language teaching next to
+battery chemistry. The digest prints a note when works spread over many fields, but that
+also happens with interdisciplinary researchers, so judge by the titles. To look closer,
+list every work with its institutions and co-authors:
+
+```bash
+python3 <skill>/scripts/openalex.py digest --input <work>/library.json --list
+```
+
+If works of other people are mixed in, tell the user, ask which group is theirs, and make
+a cleaned library. Use the cleaned file everywhere a library is needed:
 
 ```bash
 python3 <skill>/scripts/openalex.py subset --input <work>/library.json --out <work>/mine.json \
-  --keep-field "Linguistics" --keep-title "language|learner|readab" --drop-id W123,W456
+  --keep-title "language|learner|readab" --keep-id W111,W222 --drop-id W123,W456
 ```
 
-A work is kept if it matches any `--keep` option and no `--drop` option. The report lists
-what was dropped, so check it and adjust.
+A work is kept if it matches any `--keep` option and no `--drop` option. `--keep-field`
+exists too, but namesakes often share a broad field such as computer science, so titles
+and ids are more precise. The report lists what was dropped; check it, and tell the user
+about works you were unsure of.
 
 If OpenAlex
 has no works for the ORCID, the script falls back to the public ORCID record by itself. If
@@ -149,8 +162,8 @@ to focus on one collection.
 enabled (`--local`), or the zotero.org web API (`--user-id` or `--group-id`), which needs
 a Zotero API key for private libraries. Do not suggest the web API to a user who has not
 asked for it; the export file gives the same result. If a user does want it, the key is
-read from the `ZOTERO_API_KEY` environment variable, and it should be created as
-read-only. See `scripts/zotero.py --help`.
+read from the `ZOTERO_API_KEY` environment variable or a line `ZOTERO_API_KEY=...` in the
+skill's `.config` file, and it should be created as read-only. See `scripts/zotero.py --help`.
 
 Items come out newest-added first, capped at 300, because recent additions say the most
 about current interests.
@@ -189,8 +202,9 @@ For Zotero, CV and PDF sources you can attach OpenAlex topics, keywords and abst
 python3 <skill>/scripts/openalex.py resolve --input <work>/zotero.json --out <work>/library.json
 ```
 
-Items with a DOI are matched in cheap batches. Items with only a title cost ten times more
-each, so they are capped (`--max-title-lookups`, default 25). Do this when many items have
+Items with a DOI are matched in cheap batches. Each item with only a title costs one text
+search, so they are capped (`--max-title-lookups`, default 25, which is a quarter of the
+daily allowance without a key). Set it to 0 to match DOIs only. Do this when many items have
 DOIs or when the titles alone leave the interests unclear. Skip it when the titles and
 abstracts you already have paint a clear picture.
 
@@ -237,12 +251,17 @@ python3 <skill>/scripts/openalex.py recent \
 ```
 
 Query syntax: searches titles and abstracts. Use `"quoted phrases"`, `AND`, `OR`, `NOT`
-(uppercase) and parentheses. Unquoted words are stemmed and all must appear. Keep each
-query to at most 4 boolean operators. OpenAlex slows down queries with more, and several
-short queries find more than one long one anyway.
+(uppercase) and parentheses. Unquoted words are stemmed and all must appear. Count the
+words `AND`, `OR` and `NOT` in a query and keep them to 5 or fewer: OpenAlex slows down
+queries with more, and several short queries find more than one long one anyway.
 
-**Papers that cite the user.** In addition to the topic searches, run one search for new
-papers that cite the works in the user's library:
+Terms of art often mean something else in another field ("twin prime" is also number
+theory, "PEmax" is also respiratory medicine). When off-field papers show up, add
+`--topic-id` with one or two OpenAlex topic ids from the library digest. That restricts
+the query to the user's field.
+
+**Papers that cite the user.** When the library holds the user's own publications (ORCID
+or CV), also run one search for new papers that cite them:
 
 ```bash
 python3 <skill>/scripts/openalex.py recent --label "Cites your work" \
@@ -251,21 +270,30 @@ python3 <skill>/scripts/openalex.py recent --label "Cites your work" \
 ```
 
 This is cheap, is not throttled, and finds follow-up work that uses different vocabulary
-from the user's. It needs a library with OpenAlex ids (from `author` or `resolve`). Many
+from the user's. It needs a library with OpenAlex ids (from `author` or `resolve`).
+
+When the library is a reading collection (Zotero or PDFs), the papers in it are not the
+user's own. Do not say that anything "cites your work". The search is still useful in a
+narrower form: make a `subset` of the library items that belong to the chosen topics and
+pass that to `--citing`, otherwise one popular paper on a side topic floods the results.
+Present the hits as "cites a paper in your library" and name the paper.
+
+Many
 citing papers mention the user's work only in passing, so screen them like any other
 candidate. The report names the works of the user that each paper cites; use that in the
 relevance sentence. To screen: keep those that fall under a chosen topic and show them there, marked as citing
 the user. If a paper builds directly on the user's work but fits no chosen topic, list it
-in a short final section "Also citing your work".
+in a short final section "Also citing your work" (for a reading library: "Also citing
+papers in your library").
 
 Useful options:
 
 | Option | Purpose |
 |---|---|
 | `--days 90` | look-back window. Or use `--from 2026-01-01 --to 2026-03-31` for a fixed period |
-| `--known FILE` | drop papers already in the user's library and, for an ORCID library, the user's own papers. Repeatable |
-| `--exclude-author-name "Jane Q. Doe"` | drop the user's own new papers when the source was not an ORCID. Use the name as printed on their papers. Repeatable for variants |
-| `--per-query 25` | results fetched per query. Raise it when a query has more matches than were fetched and they look relevant |
+| `--known FILE` | drop papers already in the user's library and, for an ORCID library, the user's own papers. Repeatable. Also accepts the `--out` file of an earlier search, so a later search does not return the same papers again |
+| `--exclude-author-name "Jane Q. Doe"` | drop the user's own new papers when the source was not an ORCID. Matches family name plus first initial, so "J. Doe" is covered |
+| `--per-query 40` | results fetched per query. Up to 100 costs the same as one search, so raise it freely when a query has more matches than were fetched. Re-running a query with a different number counts as a new search |
 | `--abstract-chars 0` | print full abstracts. By default long abstracts are shortened to their first and last part. The saved JSON always has the full text |
 | `--semantic "plain description of the topic"` | adds a meaning-based search. Useful when the topic is hard to express in keywords. It can only be limited by year, not by date, so in a short window it may return little |
 | `--topic-id T11587` | restrict to an OpenAlex topic from the digest. Useful when a query term is ambiguous across fields |
@@ -279,8 +307,9 @@ Read the search statistics at the top of the report and adjust:
 
 - **Hundreds of matches**: the query is too broad. Add a constraining term, or use
   `--topic-id`.
-- **More matches than were fetched** (say 60 matches, 25 fetched): if the fetched ones are
-  mostly on topic, raise `--per-query` so nothing is missed.
+- **More matches than were fetched** (say 160 matches, 40 fetched): in a busy field, start
+  with `--per-query 100`. If there are still more, split the topic into narrower queries.
+  Tell the user in the notes when coverage is partial.
 - **Zero or very few matches**: loosen it. Queries that combine three or more specific
   concepts with `AND` often return nothing in a 90-day window; two concepts are usually
   enough, since you screen the results anyway. Drop a term, add synonyms with `OR`, or try
@@ -319,14 +348,28 @@ paper to show. The user will decide what to read based on your sentence, and an 
 finding is worse than none. When OpenAlex has no abstract, either fetch the paper's landing
 page to read it, or write the entry from the title and mark it "(no abstract available)".
 A title-only entry says what the title says and nothing more, and does not go at the top
-of a topic.
+of a topic. The same holds when the abstract only states the problem or is cut off before
+the results: say that the abstract gives no result, rather than inferring one.
+
+Keep the abstract's own limits. If it says an effect held "generally", or for two of three
+models, or that the authors "conclude" something, the sentence says the same. Dropping
+such qualifiers is the most common way these summaries go wrong. Attribute details to the
+right part of the study: a number that belongs to one experiment should not be attached to
+another.
+
+**Check before you present.** When all entries are written, go through them once more
+against the abstracts: every number, every direction of effect, every name of a method or
+dataset. Correct what does not match. This takes a minute and is what makes the digest
+trustworthy.
 
 **The relevance sentence** connects the paper to this user's own work, and should be
 different for every paper. Refer to their specific papers, methods, data or questions:
 "Uses the same learner corpus as your 2017 task-effects study and reaches the opposite
 conclusion for syntactic complexity." A sentence that would fit any reader, such as "This
 is relevant to your interest in readability", tells them nothing, since the paper is
-already listed under that topic.
+already listed under that topic. Name the paper or item you mean ("your 2024 study of the
+task-based agent", "the Denis 2021 paper in your library"). "Your dialogue system" or "your
+work on feedback" is too vague for the user to see the connection.
 
 ### Output format
 
@@ -357,6 +400,10 @@ First Author, Second Author, et al. · *Journal or venue* · 14 Jul 2026 · arti
   papers summarised from title only.
 ```
 
+Every paper you mention gets a link, including those in brief "also on topic" or "not
+shown" lists. Copy names, venues and dates from the OpenAlex record; if you fill a gap
+yourself (a venue guessed from the DOI, a name transliterated), say so.
+
 Mark preprints as "preprint" in the metadata line, since they are not peer reviewed. Show
 "open access" only when OpenAlex reports it, and link the open access copy when its URL
 differs from the DOI link.
@@ -378,7 +425,8 @@ your own words but keeping the steps:
 >    - Claude: open or create a Project, and add the line `OpenAlex key: <your key>` to
 >      the project instructions.
 >    - ChatGPT: open or create a Project, and add the same line to its instructions.
->    - A terminal agent: set the `OPENALEX_API_KEY` environment variable.
+>    - A terminal agent: create a file named `.config` in the skill's folder containing
+>      the line `OPENALEX_API_KEY=<your key>`.
 >
 > The key only counts how much you use OpenAlex. It gives no access to your account or
 > data, and you can replace it on the same page at any time.

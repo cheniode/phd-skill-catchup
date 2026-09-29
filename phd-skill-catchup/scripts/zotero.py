@@ -10,7 +10,8 @@ Sources (pick one):
                    (Settings > Advanced > "Allow other applications on this computer to communicate with Zotero")
   --user-id ID / --group-id ID
                    the Zotero web API. Private libraries need an API key in the ZOTERO_API_KEY
-                   environment variable (or --api-key). Create one at https://www.zotero.org/settings/keys
+                   environment variable, or as ZOTERO_API_KEY=... in the skill folder's `.config`
+                   file (or --api-key). Create one at https://www.zotero.org/settings/keys
 
 Prints a short summary and writes {"source":..., "items":[{title, doi, year, abstract, tags,
 venue, authors, date_added, collections}]} to --out. Items are ordered newest-added first.
@@ -30,6 +31,23 @@ import urllib.request
 from collections import Counter
 
 SKIP_TYPES = {"attachment", "note", "annotation"}
+
+
+def config_value(name):
+    """Read NAME=value from the optional `.config` file in the skill folder."""
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".config")
+    try:
+        with open(path, "r", encoding="utf-8-sig") as fh:
+            for line in fh:
+                line = line.strip()
+                if line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                if k.strip().replace("export ", "") == name:
+                    return v.strip().strip("\"'")
+    except OSError:
+        pass
+    return ""
 
 
 def year_of(s):
@@ -326,7 +344,7 @@ def main():
     p.add_argument("--out", help="write the library JSON here")
     args = p.parse_args()
 
-    key = args.api_key or os.environ.get("ZOTERO_API_KEY")
+    key = args.api_key or os.environ.get("ZOTERO_API_KEY") or config_value("ZOTERO_API_KEY")
     if args.file:
         items, source = read_file(args.file), "zotero-export:" + os.path.basename(args.file)
     elif args.sqlite is not None:
