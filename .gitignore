@@ -6,3 +6,6 @@ __pycache__/
 
 # test runs and benchmark outputs
 phd-skill-catchup-workspace/
+
+# built packages
+dist/
