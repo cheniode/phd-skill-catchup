@@ -1,0 +1,19 @@
+{
+  "skill_name": "phd-skill-catchup",
+  "evals": [
+    {
+      "id": 1,
+      "name": "orcid-default-window",
+      "prompt": "I want to catch up on what's new in my research areas. My ORCID is 0000-0002-9740-7442.",
+      "expected_output": "Identifies the author via OpenAlex, proposes specific research interests with evidence, then a digest of publications from the last 90 days grouped by topic, each with a findings sentence and a personalised relevance sentence.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "cv-list-60-days",
+      "prompt": "what did I miss over the last 60 days? here are my main papers from my CV:\n\n1. Programmable editing of a target base in genomic DNA without double-stranded DNA cleavage. Nature (2016)\n2. Programmable base editing of A•T to G•C in genomic DNA without DNA cleavage. Nature (2017)\n3. Evolved Cas9 variants with broad PAM compatibility and high DNA specificity. Nature (2018)\n4. Search-and-replace genome editing without double-strand breaks or donor DNA. Nature (2019). doi:10.1038/s41586-019-1711-4\n5. In vivo base editing rescues Hutchinson-Gilford progeria syndrome in mice. Nature (2021)\n6. Engineered virus-like particles for efficient in vivo delivery of therapeutic proteins. Cell (2022)\n7. Phage-assisted continuous evolution of proteins",
+      "expected_output": "Derives interests (base editing, prime editing, delivery, directed evolution) from the list, uses a 60-day window, and presents screened recent publications with findings and relevance sentences.",
+      "files": []
+    }
+  ]
+}
