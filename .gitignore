@@ -9,3 +9,4 @@ phd-skill-catchup-workspace/
 
 # built packages
 dist/
+*.zip
