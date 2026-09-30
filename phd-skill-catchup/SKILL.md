@@ -1,7 +1,7 @@
 ---
 name: phd-skill-catchup
 description: Personalised literature catch-up for researchers. Learns the user's research interests from their ORCID iD, Zotero library, a publication list pasted from a CV, or a folder of PDFs, lets them pick topics, then finds recent publications (last 90 days by default) on OpenAlex, screens them for relevance, and presents each with a one-sentence summary of its main findings and why it matters to the user. Use this skill whenever a researcher, PhD student, postdoc or academic wants to stay up to date, catch up on the literature, see what's new or what they missed in their field, get a reading digest or literature alert, or find recent papers related to their own work - even if they don't mention OpenAlex, ORCID or Zotero.
-compatibility: Works best with a shell and Python 3.8+ (standard library only) and internet access to api.openalex.org. No API keys are required. Without code execution, falls back to fetching OpenAlex URLs with any web-fetch tool (see references/openalex-api.md).
+compatibility: For agents that run on the user's computer with a shell, such as Claude Code and Codex CLI. Needs Python 3.8+ (standard library only) and internet access to api.openalex.org. No API keys are required.
 ---
 
 # Research catch-up
@@ -44,22 +44,10 @@ the start and never make one a condition for continuing. Many users are research
 technical training, and being asked for an "API key" before anything has happened puts
 them off.
 
-Use a key when one is already there. Look in this order:
-
-1. The `OPENALEX_API_KEY` environment variable, or a line `OPENALEX_API_KEY=...` in the
-   file `.config` in this skill's folder. The scripts pick up both by themselves, and the
-   usage line at the end of each run says whether a key was used. Do not open or print
-   `.config`.
-2. Your instructions for this conversation: project instructions, custom instructions or
-   a memory, where the user may have stored a line such as `OpenAlex key: abc123`. Save
-   the key to a file in `<work>` and pass that file to every `openalex.py` call:
-
-   ```bash
-   python3 <skill>/scripts/openalex.py --key-file <work>/openalex.key recent ...
-   ```
-
-Do not repeat a key in your replies, and do not write it into the digest or the saved
-profile. It is enough to say "I'm using your OpenAlex key".
+The scripts find the key by themselves, in the `OPENALEX_API_KEY` environment variable or
+in a line `OPENALEX_API_KEY=...` in the file `.config` in this skill's folder. The usage
+line at the end of each run says whether a key was used. Do not open or print `.config`,
+and do not repeat a key in your replies, the digest or the saved profile.
 
 Bring up the key only after the results are delivered, and only if the run was slow (the
 script reported waiting for OpenAlex) or the daily allowance ran out. Then offer it as a
@@ -69,8 +57,15 @@ Responses are cached for 12 hours, so repeating a command costs nothing. If a re
 a search failed, re-run the same command: finished searches come from the cache and only
 the failed ones are retried.
 
-**No code execution?** Read `references/openalex-api.md` and do the same steps by fetching
-the URLs described there.
+**No connection to OpenAlex?** This skill is made for agents that run on the user's own
+computer, such as Claude Code and Codex CLI. If the scripts cannot reach
+`api.openalex.org` (the error mentions a failed connection, a proxy or a blocked host),
+the environment does not allow outbound connections. Do not improvise a digest from
+memory or from a general web search: it would miss papers and the user could not tell.
+Tell the user plainly that the skill cannot reach OpenAlex from here, and point them to
+the alternative named in the README of https://github.com/cheniode/phd-skill-catchup.
+`references/openalex-api.md` describes the OpenAlex API in case you need a request the
+scripts do not cover.
 
 **Returning user?** If a file named `phd-skill-catchup-profile.md` exists in the working
 folder, read it. It holds the topics and queries from a previous run. Offer to reuse it
@@ -83,9 +78,10 @@ gives a better picture (publications show what they write about, a reading libra
 what they currently follow):
 
 - **ORCID iD** (e.g. `0000-0002-1825-0097`): their publications are loaded from OpenAlex
-- **Zotero library**: a file exported from Zotero
+- **Zotero library**: read directly from the Zotero app on this computer, or a file
+  exported from Zotero
 - **Publication list**: pasted from their CV or website
-- **PDFs**: a folder, or attached files, of papers they have read or written
+- **Folder of PDFs**: papers they have read or written
 
 None of these needs an account, a password or a key. Then wait for their reply.
 
@@ -131,14 +127,25 @@ both are empty, ask for another source.
 
 ### Zotero
 
-**Recommended: an export file.** It needs no key and works everywhere, including web apps.
-If the user has not exported before, give them these steps:
+**First choice: read the library on this computer.** If the user has the Zotero app
+installed, this needs nothing from them. Say that you will read their Zotero library from
+this computer, then run:
+
+```bash
+python3 <skill>/scripts/zotero.py --sqlite --out <work>/zotero.json
+```
+
+This reads a temporary copy, so it is safe while Zotero is open, and nothing leaves the
+computer. Add `--collection NAME` to focus on one collection.
+
+**If the library is not found, or is on another computer: an export file.** Give the user
+these steps:
 
 > 1. Open the Zotero app on your computer.
 > 2. To share everything, choose **File > Export Library…** in the menu. To share one
 >    collection, right-click it in the left panel and choose **Export Collection…**
 > 3. In the **Format** list choose **CSV**. Leave the other boxes as they are and click **OK**.
-> 4. Save the file, then attach it to this chat (or tell me where you saved it).
+> 4. Save the file and tell me where you saved it.
 
 CSV is the best choice because it includes the date each item was added. BibTeX, RIS and
 CSL JSON exports work too.
@@ -146,17 +153,6 @@ CSL JSON exports work too.
 ```bash
 python3 <skill>/scripts/zotero.py --file "My Library.csv" --out <work>/zotero.json
 ```
-
-**If you run on the user's own computer** (a terminal or desktop agent, not a web app),
-you can read the Zotero database directly and spare them the export. Offer it, and fall
-back to the export file if it is not found:
-
-```bash
-python3 <skill>/scripts/zotero.py --sqlite --out <work>/zotero.json
-```
-
-This reads a temporary copy, so it is safe while Zotero is open. Add `--collection NAME`
-to focus on one collection.
 
 **Advanced routes**, for users who ask for them: a running Zotero 7+ with its local API
 enabled (`--local`), or the zotero.org web API (`--user-id` or `--group-id`), which needs
@@ -180,10 +176,7 @@ as `<work>/cv.json`:
 Include `doi` only when it appears in the text. Titles and venues alone are usually enough
 to see what someone works on, so the next step is optional enrichment.
 
-### PDFs
-
-In a web app the user attaches the files to the chat; treat the folder they land in as the
-PDF folder.
+### Folder of PDFs
 
 ```bash
 python3 <skill>/scripts/scan_pdfs.py "/path/to/folder" --out <work>/pdfs.json
@@ -421,18 +414,14 @@ your own words but keeping the steps:
 >
 > 1. Go to https://openalex.org and create a free account.
 > 2. Open https://openalex.org/settings/api and copy the key shown there.
-> 3. Store it where I can find it next time:
->    - Claude: open or create a Project, and add the line `OpenAlex key: <your key>` to
->      the project instructions.
->    - ChatGPT: open or create a Project, and add the same line to its instructions.
->    - A terminal agent: create a file named `.config` in the skill's folder containing
->      the line `OPENALEX_API_KEY=<your key>`.
+> 3. Create a text file named `.config` in this folder: `<skill folder>`
+>    with the single line `OPENALEX_API_KEY=<your key>`.
 >
 > The key only counts how much you use OpenAlex. It gives no access to your account or
 > data, and you can replace it on the same page at any time.
 
-If the user pastes a key into the chat instead, accept it and use it for this conversation
-with `--key-file`. Mention once that storing it as above saves them from pasting it again.
+Fill in the real path of the skill folder. If the user pastes a key into the chat instead,
+offer to create the `.config` file for them, and do it if they agree.
 
 Offer, briefly:
 
