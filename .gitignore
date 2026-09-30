@@ -10,3 +10,6 @@ phd-skill-catchup-workspace/
 # built packages
 dist/
 *.zip
+
+# internal notes, not for the repository
+HANDOFF.md
