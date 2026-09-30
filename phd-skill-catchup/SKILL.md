@@ -404,6 +404,44 @@ differs from the DOI link.
 If the user asked for a file or has many results, also save the digest as a Markdown file
 in their working folder and tell them where it is.
 
+### Offer the papers as a file for their reference manager
+
+After showing the digest, offer to write the selected papers as a reference file they can
+import into Zotero, EndNote, Mendeley, Papers or JabRef. Say it in one line, for example:
+
+> Want these as a file you can import into Zotero or another reference manager?
+
+Do not write the file before they say yes. When they agree, pass the ids of the papers you
+selected, in the order they appear in the digest:
+
+```bash
+python3 <skill>/scripts/export_refs.py \
+  --input <work>/recent-1.json --input <work>/recent-2.json \
+  --select W7168288578,W7171372165,W7167243873 \
+  --tag "catch-up 2026-09-30" \
+  --format bib --out <somewhere they can reach>/catchup-2026-09-30
+```
+
+Points that matter:
+
+- **Export only what you showed them.** `--select` takes the OpenAlex ids (`W…`) or DOIs
+  of the papers in the digest. Without it the file holds every candidate, including the
+  ones you screened out, which is not what they asked for.
+- **Pass every file you searched into.** Repeat `--input` for each `recent-*.json`,
+  otherwise the ids from the missing file are reported as not found.
+- **Where to write it.** Put it somewhere the user can open, such as their home or
+  Downloads folder, not the scratch folder. Ask if you are unsure.
+- **Format.** `bib` suits Zotero, JabRef and most tools; `ris` suits EndNote and Mendeley;
+  `csljson` is for CSL-based tools; `all` writes the three side by side. Offer `bib`
+  unless they name a tool that wants something else.
+- **The tag** given with `--tag` is attached to every entry, so the batch is easy to find
+  in Zotero afterwards. Use the date of the catch-up.
+
+Then tell them the path and how to import it: in Zotero, File > Import…, then pick the
+file. Mention that the entries carry the tag, so they can filter on it.
+
+If the user asked for a saved profile as well, offer both in the same breath.
+
 ### Afterwards
 
 **If the run was slow or hit the daily limit**, and no key was in use, add this once, in
@@ -426,6 +464,7 @@ offer to create the `.config` file for them, and do it if they agree.
 Offer, briefly:
 
 - to go deeper on any paper, widen or narrow a topic, or extend the time window
+- to export the papers for their reference manager, if they have not taken that up yet
 - to save a profile for next time. If they agree, write `phd-skill-catchup-profile.md` to
   the working folder with: the sources used (ORCID, file paths, never API keys), the chosen
   topics with the queries that worked well, and today's date as the last run. Next time

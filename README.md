@@ -78,6 +78,10 @@ The agent asks what it may use to learn your interests. You can give it any of t
 None of these needs a password or an account. By default the skill covers the last 90
 days. Ask for a different period if you want one.
 
+When the list is ready, the agent offers to save the papers as a file you can import into
+Zotero, EndNote, Mendeley, Papers or JabRef. Every entry is tagged with the date of the
+catch-up, so the batch is easy to find in your library afterwards.
+
 ## Not using Claude Code or Codex?
 
 The author maintains a separate free tool that does this without an AI agent.
@@ -100,7 +104,8 @@ phd-skill-catchup/
 ├── scripts/
 │   ├── openalex.py             ORCID loading, title and DOI matching, recent-works search
 │   ├── zotero.py               Zotero export files, local database, local and web API
-│   └── scan_pdfs.py            title, DOI and first-page text from a folder of PDFs
+│   ├── scan_pdfs.py            title, DOI and first-page text from a folder of PDFs
+│   └── export_refs.py          selected papers as BibTeX, RIS or CSL JSON
 └── references/
     └── openalex-api.md         raw API usage for agents that cannot run scripts
 ```
